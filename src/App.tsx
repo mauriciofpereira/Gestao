@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
-  Clock,
   Users,
   FileText,
   LogOut,
@@ -9,7 +8,6 @@ import {
   Hotel,
   BarChart2,
   CheckCircle,
-  Calendar,
   Trash2,
   Bell,
   AlertTriangle,
@@ -17,15 +15,12 @@ import {
   CalendarDays,
   Home,
   Car,
-  ShieldCheck,
   Edit,
   TrendingUp,
-  Euro,
   PlusCircle,
   Printer,
   ChevronLeft,
   ChevronRight,
-  MessageSquare,
   ThumbsUp,
   ThumbsDown,
 } from "lucide-react";
@@ -34,15 +29,93 @@ import { useFirestoreCollection } from "./hooks/useFirestoreCollection";
 import { login, logout, registerUser } from "./services/auth";
 import { addDocument, updateDocument, deleteDocument } from "./services/firestore";
 
+// --- Tipos auxiliares ---
+interface User {
+  id: string;
+  email: string;
+  name?: string;
+  password?: string;
+  hourlyRates?: { rate: number; effectiveDate: string }[];
+  [key: string]: any;
+}
+
+interface Worksite {
+  id: string;
+  name: string;
+  address: string;
+  [key: string]: any;
+}
+
+interface House {
+  id: string;
+  name: string;
+  address: string;
+  rent: number;
+  [key: string]: any;
+}
+
+interface Car {
+  id: string;
+  model: string;
+  plate: string;
+  insuranceDate: string;
+  inspectionDate: string;
+  [key: string]: any;
+}
+
+interface WorkLog {
+  id: string;
+  userId: string;
+  date: string;
+  hours: number;
+  [key: string]: any;
+}
+
+interface VacationRequest {
+  id: string;
+  userId: string;
+  startDate: string;
+  endDate: string;
+  status: string;
+  [key: string]: any;
+}
+
+interface Message {
+  id: string;
+  senderId: string;
+  recipientId: string;
+  content: string;
+  timestamp: string;
+  [key: string]: any;
+}
+
+// --- Funções utilitárias ---
+function formatDate(date: Date | string): string {
+  const d = typeof date === "string" ? new Date(date) : date;
+  return d.toLocaleDateString("pt-BR");
+}
+
+function formatMinutesToHours(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `${h}h ${m}min`;
+}
+
+function getTomorrowDateString(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return d.toISOString().split("T")[0];
+}
+
 // --- Função para obter a taxa de pagamento correta para uma data específica ---
 // Percorre o histórico de taxas de um utilizador e retorna a mais recente aplicável à data fornecida.
-const getRateForDate = (user, date) => {
+const getRateForDate = (user: User, date: string | Date): number => {
   if (!user || !user.hourlyRates || user.hourlyRates.length === 0) return 0;
   const targetDate = new Date(date);
-  if (isNaN(targetDate)) return 0;
+  if (isNaN(targetDate.getTime())) return 0;
   // Garante que as taxas estão ordenadas da mais recente para a mais antiga
   const sortedRates = [...user.hourlyRates].sort(
-    (a, b) => new Date(b.effectiveDate) - new Date(a.effectiveDate)
+    (a, b) => new Date(b.effectiveDate).getTime() - new Date(a.effectiveDate).getTime()
   );
   // Encontra a primeira taxa cuja data de efetivação é anterior ou igual à data alvo
   const applicableRate = sortedRates.find(
@@ -54,24 +127,18 @@ const getRateForDate = (user, date) => {
     : sortedRates[sortedRates.length - 1]?.rate || 0;
 };
 
-// --- Mock Data - Simula um banco de dados e a lógica de negócio ---
-// Removido: useMockData e todos os dados mockados. Integre aqui com seu backend real.
-// Exemplo:
-// const data = useSeuBackend();
-const data = {}; // TODO: Integrar com backend real
-
 // --- Componente Principal ---
 export default function App() {
-  const user = useAuth();
-  const users = useFirestoreCollection("users");
-  const worksites = useFirestoreCollection("worksites");
-  const houses = useFirestoreCollection("houses");
-  const cars = useFirestoreCollection("cars");
-  const workLogs = useFirestoreCollection("workLogs");
-  const vacationRequests = useFirestoreCollection("vacationRequests");
-  const messages = useFirestoreCollection("messages");
-  const [page, setPage] = useState("login");
-  const [error, setError] = useState("");
+  const user = useAuth() as User | null;
+  const users = useFirestoreCollection("users") as User[];
+  const worksites = useFirestoreCollection("worksites") as Worksite[];
+  const houses = useFirestoreCollection("houses") as House[];
+  const cars = useFirestoreCollection("cars") as Car[];
+  const workLogs = useFirestoreCollection("workLogs") as WorkLog[];
+  const vacationRequests = useFirestoreCollection("vacationRequests") as VacationRequest[];
+  const messages = useFirestoreCollection("messages") as Message[];
+  const [page, setPage] = useState<string>("login");
+  const [error, setError] = useState<string>("");
 
   // Exibir aviso amigável se não houver usuário logado
   if (!user) {
@@ -125,7 +192,7 @@ export default function App() {
 }
 
 // --- Componentes Genéricos ---
-function PageWrapper({ title, children, setPage, onPrint }) {
+function PageWrapper({ title, children, setPage, onPrint }: { title: string; children: React.ReactNode; setPage: (page: string) => void; onPrint?: () => void }) {
   return (
     <div className="animate-fade-in">
       <div className="flex justify-between items-center mb-6">
@@ -151,7 +218,7 @@ function PageWrapper({ title, children, setPage, onPrint }) {
   );
 }
 
-function Modal({ show, onClose, title, children }) {
+function Modal({ show, onClose, title, children }: { show: boolean; onClose: () => void; title: string; children: React.ReactNode }) {
   if (!show) return null;
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in">
@@ -175,10 +242,10 @@ function Modal({ show, onClose, title, children }) {
 }
 
 // --- Componentes de Autenticação e Navegação ---
-function LoginPage({ onLogin, error }) {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const handleSubmit = (e) => {
+function LoginPage({ onLogin, error }: { onLogin: (email: string, password: string) => void; error: string }) {
+  const [email, setEmail] = useState<string>("");
+  const [password, setPassword] = useState<string>("");
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     onLogin(email, password);
   };
@@ -245,20 +312,20 @@ function LoginPage({ onLogin, error }) {
 }
 
 // -- DASHBOARDS --
-function AdminDashboard({ user, setPage, onLogout, data }) {
+function AdminDashboard({ user, setPage, onLogout, data }: { user: User; setPage: (page: string) => void; onLogout: () => void; data: { notifications: any[]; vacationRequests: VacationRequest[]; cars: Car[]; setNotifications: React.Dispatch<React.SetStateAction<any[]>> } }) {
   const { notifications, vacationRequests, cars, setNotifications } = data;
   const pendingVacations = vacationRequests.filter(
-    (r) => r.status === "Pendente"
+    (r: VacationRequest) => r.status === "Pendente"
   ).length;
 
   // Efeito para verificar documentos de carros a expirar e criar notificações
   useEffect(() => {
     const today = new Date();
-    const upcomingExpiry = cars.filter((car) => {
+    const upcomingExpiry = cars.filter((car: Car) => {
       const insDate = new Date(car.insuranceDate);
       const inspDate = new Date(car.inspectionDate);
-      const insDiff = (insDate - today) / (1000 * 60 * 60 * 24);
-      const inspDiff = (inspDate - today) / (1000 * 60 * 60 * 24);
+      const insDiff = (insDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
+      const inspDiff = (inspDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
       return (insDiff > 0 && insDiff <= 30) || (inspDiff > 0 && inspDiff <= 30);
     });
 
@@ -356,14 +423,14 @@ function AdminDashboard({ user, setPage, onLogout, data }) {
   );
 }
 
-function EmployeeDashboard({ user, setPage, onLogout, data }) {
-  const workLogs = useFirestoreCollection("workLogs");
+function EmployeeDashboard({ user, setPage, onLogout, data }: { user: User; setPage: (page: string) => void; onLogout: () => void; data: any }) {
+  const workLogs = useFirestoreCollection("workLogs") as WorkLog[];
   const [showSuccess, setShowSuccess] = useState(false);
-  const [selectedDate, setSelectedDate] = useState(
+  const [selectedDate, setSelectedDate] = useState<string>(
     new Date().toISOString().split("T")[0]
   );
   const tomorrowStr = getTomorrowDateString();
-  const [pendingPlan, setPendingPlan] = useState("");
+  const [pendingPlan, setPendingPlan] = useState<string>("");
   const [planSaved, setPlanSaved] = useState(false);
 
   useEffect(() => {
@@ -377,9 +444,9 @@ function EmployeeDashboard({ user, setPage, onLogout, data }) {
     setTimeout(() => setPlanSaved(false), 2000);
   };
 
-  const handleSave = async (logData) => {
+  const handleSave = async (logData: Partial<WorkLog>) => {
     const existingLog = workLogs.find(
-      (l) => l.date === selectedDate && l.userId === user.id
+      (l: WorkLog) => l.date === selectedDate && l.userId === user.id
     );
     if (existingLog) {
       await updateDocument("workLogs", existingLog.id, {
@@ -517,7 +584,7 @@ function EmployeeDashboard({ user, setPage, onLogout, data }) {
               >
                 {" "}
                 <option value="">Selecione...</option>{" "}
-                {data.worksites.map((h) => (
+                {data.worksites.map((h: Worksite) => (
                   <option key={h.id} value={h.name}>
                     {h.name}
                   </option>
@@ -550,7 +617,13 @@ function DashboardCard({
   title,
   description,
   onClick,
-  notificationCount,
+  notificationCount = 0,
+}: {
+  icon: React.ReactElement;
+  title: string;
+  description: string;
+  onClick: () => void;
+  notificationCount?: number;
 }) {
   return (
     <div
@@ -563,10 +636,11 @@ function DashboardCard({
         </div>
       )}
       <div className="text-[#43e0a2] mb-4">
-        {React.cloneElement(icon, {
-          size: 32,
-          className: "transition-transform duration-300 group-hover:scale-110",
-        })}
+        {React.isValidElement(icon) &&
+          React.cloneElement(icon as React.ReactElement<any>, {
+            size: 32,
+            className: "transition-transform duration-300 group-hover:scale-110",
+          })}
       </div>
       <h3 className="text-xl font-bold text-white mb-2">{title}</h3>
       <p className="text-gray-400 text-sm">{description}</p>
@@ -581,13 +655,19 @@ function TimeRegistrationForm({
   selectedDate,
   workLogs,
   disabled,
+}: {
+  onSave: (data: any) => void;
+  user: User;
+  selectedDate: string;
+  workLogs: WorkLog[];
+  disabled: boolean;
 }) {
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
   const [totalMinutes, setTotalMinutes] = useState(0);
   useEffect(() => {
     const log = workLogs.find(
-      (l) => l.date === selectedDate && l.userId === user.id
+      (l: WorkLog) => l.date === selectedDate && l.userId === user.id
     );
     setStart(log?.details?.start || "");
     setEnd(log?.details?.end || "");
@@ -595,7 +675,7 @@ function TimeRegistrationForm({
   useEffect(() => {
     if (start && end) {
       const total =
-        (new Date(`1970-01-01T${end}`) - new Date(`1970-01-01T${start}`)) /
+        (new Date(`1970-01-01T${end}`).getTime() - new Date(`1970-01-01T${start}`).getTime()) /
           60000 -
         30;
       setTotalMinutes(total > 0 ? total : 0);
@@ -603,7 +683,7 @@ function TimeRegistrationForm({
       setTotalMinutes(0);
     }
   }, [start, end]);
-  const handleSubmit = (e) => {
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     onSave({ totalMinutes, details: { start, end } });
   };
@@ -668,6 +748,12 @@ function ProductionRegistrationForm({
   selectedDate,
   workLogs,
   disabled,
+}: {
+  onSave: (data: any) => void;
+  user: User;
+  selectedDate: string;
+  workLogs: WorkLog[];
+  disabled: boolean;
 }) {
   const [values, setValues] = useState({
     vertrekker: 0,
@@ -678,7 +764,7 @@ function ProductionRegistrationForm({
   const [totalMinutes, setTotalMinutes] = useState(0);
   useEffect(() => {
     const log = workLogs.find(
-      (l) => l.date === selectedDate && l.userId === user.id
+      (l: WorkLog) => l.date === selectedDate && l.userId === user.id
     );
     setValues(
       log?.details || { vertrekker: 0, blijver: 0, extraBed: 0, extraUur: 0 }
@@ -688,11 +774,11 @@ function ProductionRegistrationForm({
     const { vertrekker = 0, blijver = 0, extraBed = 0, extraUur = 0 } = values;
     setTotalMinutes(vertrekker * 30 + blijver * 20 + extraBed * 5 + extraUur);
   }, [values]);
-  const handleChange = (e) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setValues((prev) => ({ ...prev, [name]: parseInt(value, 10) || 0 }));
   };
-  const handleSubmit = (e) => {
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     onSave({ totalMinutes, details: values });
   };
@@ -787,11 +873,11 @@ function ProductionRegistrationForm({
 }
 
 // --- Telas de Gestão (Admin) ---
-function WorksitesPage({ setPage }) {
-  const worksites = useFirestoreCollection("worksites");
+function WorksitesPage({ setPage }: { setPage: (page: string) => void }) {
+  const worksites = useFirestoreCollection("worksites") as Worksite[];
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState(null);
-  const handleOpenModal = (item = null) => {
+  const [editingItem, setEditingItem] = useState<Worksite | null>(null);
+  const handleOpenModal = (item: Worksite | null = null) => {
     setEditingItem(item);
     setIsModalOpen(true);
   };
@@ -799,11 +885,12 @@ function WorksitesPage({ setPage }) {
     setIsModalOpen(false);
     setEditingItem(null);
   };
-  const handleSave = async (e) => {
+  const handleSave = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    const target = e.target as typeof e.target & { name: { value: string }; address: { value: string } };
     const updatedItem = {
-      name: e.target.name.value,
-      address: e.target.address.value,
+      name: target.name.value,
+      address: target.address.value,
     };
     if (editingItem) {
       await updateDocument("worksites", editingItem.id, updatedItem);
@@ -812,7 +899,7 @@ function WorksitesPage({ setPage }) {
     }
     handleCloseModal();
   };
-  const handleDelete = async (id) => {
+  const handleDelete = async (id: string) => {
     await deleteDocument("worksites", id);
   };
   return (
@@ -912,11 +999,11 @@ function WorksitesPage({ setPage }) {
     </PageWrapper>
   );
 }
-function HousesPage({ setPage }) {
-  const houses = useFirestoreCollection("houses");
+function HousesPage({ setPage }: { setPage: (page: string) => void }) {
+  const houses = useFirestoreCollection("houses") as House[];
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState(null);
-  const handleOpenModal = (item = null) => {
+  const [editingItem, setEditingItem] = useState<House | null>(null);
+  const handleOpenModal = (item: House | null = null) => {
     setEditingItem(item);
     setIsModalOpen(true);
   };
@@ -924,12 +1011,13 @@ function HousesPage({ setPage }) {
     setIsModalOpen(false);
     setEditingItem(null);
   };
-  const handleSave = async (e) => {
+  const handleSave = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    const target = e.target as typeof e.target & { name: { value: string }; address: { value: string }; rent: { value: string } };
     const updatedItem = {
-      name: e.target.name.value,
-      address: e.target.address.value,
-      rent: parseFloat(e.target.rent.value) || 0,
+      name: target.name.value,
+      address: target.address.value,
+      rent: parseFloat(target.rent.value) || 0,
     };
     if (editingItem) {
       await updateDocument("houses", editingItem.id, updatedItem);
@@ -938,7 +1026,7 @@ function HousesPage({ setPage }) {
     }
     handleCloseModal();
   };
-  const handleDelete = async (id) => {
+  const handleDelete = async (id: string) => {
     await deleteDocument("houses", id);
   };
   return (
@@ -1057,11 +1145,11 @@ function HousesPage({ setPage }) {
     </PageWrapper>
   );
 }
-function CarsPage({ setPage }) {
-  const cars = useFirestoreCollection("cars");
+function CarsPage({ setPage }: { setPage: (page: string) => void }) {
+  const cars = useFirestoreCollection("cars") as Car[];
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingCar, setEditingCar] = useState(null);
-  const handleOpenModal = (car = null) => {
+  const [editingCar, setEditingCar] = useState<Car | null>(null);
+  const handleOpenModal = (car: Car | null = null) => {
     setEditingCar(car);
     setIsModalOpen(true);
   };
@@ -1069,32 +1157,32 @@ function CarsPage({ setPage }) {
     setIsModalOpen(false);
     setEditingCar(null);
   };
-  const handleSave = async (e) => {
+  const handleSave = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const updatedCarData = {
-      model: e.target.model.value,
-      plate: e.target.plate.value,
-      insuranceDate: e.target.insuranceDate.value,
-      inspectionDate: e.target.inspectionDate.value,
+    const target = e.target as typeof e.target & { model: { value: string }; plate: { value: string }; insuranceDate: { value: string }; inspectionDate: { value: string } };
+    const updatedCar = {
+      model: target.model.value,
+      plate: target.plate.value,
+      insuranceDate: target.insuranceDate.value,
+      inspectionDate: target.inspectionDate.value,
     };
     if (editingCar) {
-      await updateDocument("cars", editingCar.id, updatedCarData);
+      await updateDocument("cars", editingCar.id, updatedCar);
     } else {
-      await addDocument("cars", updatedCarData);
+      await addDocument("cars", updatedCar);
     }
     handleCloseModal();
   };
-  const handleDelete = async (id) => {
+  const handleDelete = async (id: string) => {
     await deleteDocument("cars", id);
   };
-  const getStatusColor = (dateString) => {
-    const today = new Date();
-    const expiryDate = new Date(dateString);
-    const diffTime = expiryDate - today;
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    if (diffDays < 0) return "bg-red-500/30 text-red-300";
-    if (diffDays <= 30) return "bg-yellow-500/30 text-yellow-300";
-    return "text-gray-400";
+  const getStatusColor = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diff = (date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+    if (diff <= 0) return "bg-red-500";
+    if (diff <= 30) return "bg-yellow-400";
+    return "bg-green-500";
   };
   return (
     <PageWrapper title="Gerir Frota" setPage={setPage}>
@@ -1243,13 +1331,13 @@ function CarsPage({ setPage }) {
     </PageWrapper>
   );
 }
-function EmployeesPage({ setPage }) {
-  const users = useFirestoreCollection("users");
-  const houses = useFirestoreCollection("houses");
+function EmployeesPage({ setPage }: { setPage: (page: string) => void }) {
+  const users = useFirestoreCollection("users") as User[];
+  const houses = useFirestoreCollection("houses") as House[];
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingUser, setEditingUser] = useState(null);
-  const employeeList = users.filter((u) => u.role === "employee");
-  const handleOpenModal = (user = null) => {
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const employeeList = (Object.values(users) as User[]).filter((u: User) => u.role === "employee");
+  const handleOpenModal = (user: User | null = null) => {
     setEditingUser(user);
     setIsModalOpen(true);
   };
@@ -1257,27 +1345,28 @@ function EmployeesPage({ setPage }) {
     setIsModalOpen(false);
     setEditingUser(null);
   };
-  const handleSave = async (e) => {
+  const handleSave = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const formData = new FormData(e.target);
+    const formData = new FormData(e.target as HTMLFormElement);
+    const getString = (key: string) => (formData.get(key) ?? "") as string;
     const baseData = {
-      name: formData.get("name"),
-      email: formData.get("email"),
-      password: formData.get("password"),
-      jobType: formData.get("jobType"),
-      startDate: formData.get("startDate"),
-      phone: formData.get("phone"),
-      houseId: formData.get("houseId"),
+      name: getString("name"),
+      email: getString("email"),
+      password: getString("password"),
+      jobType: getString("jobType"),
+      startDate: getString("startDate"),
+      phone: getString("phone"),
+      houseId: getString("houseId"),
     };
     if (editingUser) {
       const updatedUser = { ...editingUser, ...baseData };
-      if (!baseData.password) {
-        delete updatedUser.password;
+      if (!baseData.password && (updatedUser as Partial<User>).password !== undefined) {
+        delete (updatedUser as Partial<User>).password;
       }
       await updateDocument("users", editingUser.id, updatedUser);
     } else {
       const newRate = {
-        rate: parseFloat(formData.get("hourlyRate")) || 0,
+        rate: parseFloat(getString("hourlyRate")) || 0,
         effectiveDate: baseData.startDate,
       };
       const newUser = {
@@ -1289,16 +1378,17 @@ function EmployeesPage({ setPage }) {
     }
     handleCloseModal();
   };
-  const handleDelete = async (id) => {
+  const handleDelete = async (id: string) => {
     await deleteDocument("users", id);
   };
-  const handleRateChange = async (userId, rate, date) => {
+  const handleRateChange = async (userId: string, rate: string, date: string) => {
     if (!rate || !date) return;
-    const user = users.find((u) => u.id === userId);
+    const user = users.find((u: User) => u.id === userId);
+    if (!user) return;
     const newRate = { rate: parseFloat(rate), effectiveDate: date };
-    const otherRates = user.hourlyRates.filter((r) => r.effectiveDate !== date);
+    const otherRates = (user.hourlyRates || []).filter((r: { effectiveDate: string }) => r.effectiveDate !== date);
     const updatedRates = [...otherRates, newRate].sort(
-      (a, b) => new Date(b.effectiveDate) - new Date(a.effectiveDate)
+      (a, b) => new Date(b.effectiveDate).getTime() - new Date(a.effectiveDate).getTime()
     );
     const updatedUser = { ...user, hourlyRates: updatedRates };
     await updateDocument("users", userId, updatedUser);
@@ -1511,12 +1601,9 @@ function EmployeesPage({ setPage }) {
               <h3 className="text-lg font-bold mb-2">
                 Histórico de Valor/Hora
               </h3>
-              {editingUser.hourlyRates
-                .sort(
-                  (a, b) =>
-                    new Date(b.effectiveDate) - new Date(a.effectiveDate)
-                )
-                .map((hr, i) => (
+              {(editingUser.hourlyRates ?? [])
+                .sort((a: any, b: any) => new Date(b.effectiveDate).getTime() - new Date(a.effectiveDate).getTime())
+                .map((hr: any, i: number) => (
                   <div
                     key={i}
                     className="flex items-center justify-between bg-[#10182B] p-2 rounded-md mb-2"
@@ -1543,13 +1630,11 @@ function EmployeesPage({ setPage }) {
                 />
                 <button
                   type="button"
-                  onClick={() =>
-                    handleRateChange(
-                      editingUser.id,
-                      document.getElementById("newRateValue").value,
-                      document.getElementById("newRateDate").value
-                    )
-                  }
+                  onClick={() => {
+                    const rateValue = (document.getElementById("newRateValue") as HTMLInputElement | null)?.value ?? "";
+                    const rateDate = (document.getElementById("newRateDate") as HTMLInputElement | null)?.value ?? "";
+                    handleRateChange(editingUser.id, rateValue, rateDate);
+                  }}
                   className="bg-blue-600 hover:bg-blue-500 text-white font-bold p-2 rounded-lg"
                 >
                   Adicionar
@@ -1564,20 +1649,28 @@ function EmployeesPage({ setPage }) {
 }
 
 // --- Telas de Comunicação ---
-const AdminCommunicationPage = (props) => (
+const AdminCommunicationPage = (props: any) => (
   <CommunicationPage {...props} isAdmin={true} />
 );
-const EmployeeCommunicationPage = (props) => (
+const EmployeeCommunicationPage = (props: any) => (
   <CommunicationPage {...props} isAdmin={false} />
 );
 
-function CommunicationPage({ user, setPage, data, isAdmin = false }) {
+function CommunicationPage({
+  user,
+  setPage,
+  data,
+  isAdmin = false,
+}: {
+  user: User;
+  setPage: (page: string) => void;
+  data: any;
+  isAdmin?: boolean;
+}) {
   const [activeTab, setActiveTab] = useState("vacations");
   const { users } = data;
-  const [selectedEmployee, setSelectedEmployee] = useState(null);
-  const employeeList = Object.values(users).filter(
-    (u) => u.role === "employee"
-  );
+  const [selectedEmployee, setSelectedEmployee] = useState<string | null>(null);
+  const employeeList = Object.values(users) as User[];
   useEffect(() => {
     if (isAdmin && employeeList.length > 0) {
       setSelectedEmployee(employeeList[0].id);
@@ -1649,9 +1742,9 @@ function CommunicationPage({ user, setPage, data, isAdmin = false }) {
             {(isAdmin && selectedEmployee) || !isAdmin ? (
               <MessageThread
                 user={user}
-                recipientId={isAdmin ? selectedEmployee : "admin@paralelo.com"}
+                recipientId={isAdmin ? (selectedEmployee ?? '') : 'admin@paralelo.com'}
                 recipientName={
-                  isAdmin && users[selectedEmployee]
+                  isAdmin && selectedEmployee && typeof selectedEmployee === 'string' && users[selectedEmployee]
                     ? users[selectedEmployee].name
                     : "Admin"
                 }
@@ -1669,17 +1762,17 @@ function CommunicationPage({ user, setPage, data, isAdmin = false }) {
   );
 }
 
-function AdminVacationRequests({ data }) {
+function AdminVacationRequests({ data }: { data: any }) {
   const vacationRequests = useFirestoreCollection("vacationRequests");
   const users = useFirestoreCollection("users");
-  const handleRequest = async (id, status) => {
+  const handleRequest = async (id: string, status: string) => {
     const req = vacationRequests.find((r) => r.id === id);
     if (req) {
       await updateDocument("vacationRequests", id, { ...req, status });
     }
   };
 
-  const getStatusClass = (status) => {
+  const getStatusClass = (status: string) => {
     if (status === "Aprovado") return "text-green-400 bg-green-900/50";
     if (status === "Rejeitado") return "text-red-400 bg-red-900/50";
     return "text-yellow-400 bg-yellow-900/50";
@@ -1772,28 +1865,26 @@ function AdminVacationRequests({ data }) {
   );
 }
 
-function EmployeeVacationRequests({ user, data }) {
+function EmployeeVacationRequests({ user, data }: { user: User; data: any }) {
   const vacationRequests = useFirestoreCollection("vacationRequests");
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const handleSave = async (e) => {
+  const handleSave = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const newRequest = {
       userId: user.id,
-      startDate: e.target.startDate.value,
-      endDate: e.target.endDate.value,
-      reason: e.target.reason.value,
+      startDate: (e.target as any).startDate.value,
+      endDate: (e.target as any).endDate.value,
+      reason: (e.target as any).reason.value,
       status: "Pendente",
     };
     await addDocument("vacationRequests", newRequest);
     setIsModalOpen(false);
   };
-
-  const getStatusClass = (status) => {
+  const getStatusClass = (status: string) => {
     if (status === "Aprovado") return "text-green-400";
     if (status === "Rejeitado") return "text-red-400";
     return "text-yellow-400";
   };
-
   return (
     <div>
       <div className="flex justify-end mb-4">
@@ -1886,7 +1977,7 @@ function EmployeeVacationRequests({ user, data }) {
             <textarea
               name="reason"
               id="reason"
-              rows="3"
+              rows={3}
               className="w-full py-2 px-3 bg-[#10182B] text-gray-200 rounded-lg border border-gray-600"
             ></textarea>
           </div>
@@ -1902,10 +1993,10 @@ function EmployeeVacationRequests({ user, data }) {
   );
 }
 
-function MessageThread({ user, recipientId, recipientName, data }) {
+function MessageThread({ user, recipientId, recipientName, data }: { user: User; recipientId: string; recipientName: string; data: any }) {
   const messages = useFirestoreCollection("messages");
   const [newMessage, setNewMessage] = useState("");
-  const messagesEndRef = useRef(null);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -1918,7 +2009,7 @@ function MessageThread({ user, recipientId, recipientName, data }) {
         (m.from === user.id && m.to === recipientId) ||
         (m.from === recipientId && m.to === user.id)
     )
-    .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    .sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
   const handleSend = async () => {
     if (newMessage.trim() === "") return;
@@ -1989,16 +2080,14 @@ function MessageThread({ user, recipientId, recipientName, data }) {
 }
 
 // --- Outras Telas Admin ---
-function WorkSchedulePage({ setPage, data }) {
+function WorkSchedulePage({ setPage, data }: { setPage: (page: string) => void; data: any }) {
   const { users, worksites, planning, setPlanning } = data;
   const [selectedDate, setSelectedDate] = useState(
     new Date().toISOString().split("T")[0]
   );
-  const employeeList = Object.values(users).filter(
-    (u) => u.role === "employee"
-  );
-  const handleAdminPlanChange = (employeeId, newPlan) => {
-    setPlanning((prev) => ({
+  const employeeList = Object.values(users) as User[];
+  const handleAdminPlanChange = (employeeId: string, newPlan: string) => {
+    setPlanning((prev: any) => ({
       ...prev,
       [selectedDate]: { ...prev[selectedDate], [employeeId]: newPlan },
     }));
@@ -2044,7 +2133,7 @@ function WorkSchedulePage({ setPage, data }) {
                       className="w-full bg-[#10182B] text-white py-2 px-3 rounded-md border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[#43e0a2]"
                     >
                       <option value="">Não definido</option>
-                      {worksites.map((h) => (
+                      {worksites.map((h: Worksite) => (
                         <option key={h.id} value={h.name}>
                           {h.name}
                         </option>
@@ -2061,13 +2150,13 @@ function WorkSchedulePage({ setPage, data }) {
     </PageWrapper>
   );
 }
-function AdminNotificationsPage({ setPage, data }) {
+function AdminNotificationsPage({ setPage, data }: { setPage: (page: string) => void; data: any }) {
   const { notifications } = data;
   return (
     <PageWrapper title="Notificações e Alertas" setPage={setPage}>
       {notifications.length > 0 ? (
         <div className="space-y-4">
-          {notifications.map((n) => (
+          {notifications.map((n: any) => (
             <div
               key={n.id}
               className="bg-yellow-900/40 border border-yellow-700 text-yellow-300 p-4 rounded-lg flex items-center gap-4"
@@ -2090,7 +2179,7 @@ function AdminNotificationsPage({ setPage, data }) {
 }
 
 // --- Telas de Relatórios ---
-function AdminReportsPage({ setPage, data }) {
+function AdminReportsPage({ setPage, data }: { setPage: (page: string) => void; data: any }) {
   const { users, workLogs } = data;
   const [startDate, setStartDate] = useState(
     new Date(new Date().getFullYear(), new Date().getMonth(), 1)
@@ -2100,7 +2189,7 @@ function AdminReportsPage({ setPage, data }) {
   const [endDate, setEndDate] = useState(
     new Date().toISOString().split("T")[0]
   );
-  const handleSetDateRange = (start, end) => {
+  const handleSetDateRange = (start: Date, end: Date) => {
     setStartDate(start.toISOString().split("T")[0]);
     setEndDate(end.toISOString().split("T")[0]);
   };
@@ -2118,11 +2207,9 @@ function AdminReportsPage({ setPage, data }) {
       new Date(now.getFullYear(), now.getMonth(), 0)
     );
   };
-  const filteredLogs = workLogs.filter(
-    (log) => log.date >= startDate && log.date <= endDate
-  );
+  const filteredLogs = workLogs.filter((log: any) => log.date >= startDate && log.date <= endDate);
 
-  const userTotals = filteredLogs.reduce((acc, log) => {
+  const userTotals = filteredLogs.reduce((acc: any, log: any) => {
     const userId = log.userId;
     if (!acc[userId]) acc[userId] = { totalMinutes: 0, sundayBonusMinutes: 0 };
     acc[userId].totalMinutes += log.totalMinutes;
@@ -2217,12 +2304,11 @@ function AdminReportsPage({ setPage, data }) {
   );
 }
 
-function EmployeeReportsPage({ setPage, data, user }) {
+function EmployeeReportsPage({ setPage, data, user }: { setPage: (page: string) => void; data: any; user: User }) {
   const { workLogs } = data;
   const [year, setYear] = useState(new Date().getFullYear());
   const [month, setMonth] = useState(new Date().getMonth());
-
-  const userLogs = workLogs.filter((log) => {
+  const userLogs = workLogs.filter((log: any) => {
     const logDate = new Date(log.date.replace(/-/g, "/"));
     return (
       log.userId === user.id &&
@@ -2230,8 +2316,7 @@ function EmployeeReportsPage({ setPage, data, user }) {
       logDate.getMonth() === month
     );
   });
-
-  const totalMinutes = userLogs.reduce((sum, log) => sum + log.totalMinutes, 0);
+  const totalMinutes = userLogs.reduce((sum: number, log: any) => sum + log.totalMinutes, 0);
   const hourlyRate = getRateForDate(user, new Date(year, month, 1));
   const estimatedPayment = (totalMinutes / 60) * hourlyRate;
 
@@ -2281,8 +2366,8 @@ function EmployeeReportsPage({ setPage, data, user }) {
           </thead>
           <tbody>
             {userLogs
-              .sort((a, b) => new Date(a.date) - new Date(b.date))
-              .map((log) => (
+              .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime())
+              .map((log: any) => (
                 <tr
                   key={log.id}
                   className="border-b border-gray-700 last:border-b-0"
@@ -2306,7 +2391,7 @@ function EmployeeReportsPage({ setPage, data, user }) {
 }
 
 // --- Página Financeira (Admin) ---
-function FinancialsPage({ setPage, data }) {
+function FinancialsPage({ setPage, data }: { setPage: (page: string) => void; data: any }) {
   const [activeTab, setActiveTab] = useState("summary");
   const [currentDate, setCurrentDate] = useState(new Date());
 
@@ -2345,9 +2430,7 @@ function FinancialsPage({ setPage, data }) {
   const monthMiscExpenses = miscExpenses[currentMonthKey] || [];
   const monthHouseExpenses = houseExpenses[currentMonthKey] || [];
 
-  const employeeList = Object.values(users).filter(
-    (u) => u.role === "employee"
-  );
+  const employeeList = (Object.values(users) as User[]).filter((u: User) => u.role === "employee");
 
   const firstDayOfMonth = new Date(
     currentDate.getFullYear(),
@@ -2360,32 +2443,27 @@ function FinancialsPage({ setPage, data }) {
     0
   );
 
-  const monthWorkLogs = workLogs.filter((log) => {
+  const monthWorkLogs = workLogs.filter((log: any) => {
     const logDate = new Date(log.date.replace(/-/g, "/"));
     return logDate >= firstDayOfMonth && logDate <= lastDayOfMonth;
   });
 
-  const calculatedPayroll = employeeList.map((emp) => {
-    const userLogs = monthWorkLogs.filter((log) => log.userId === emp.id);
-    const totalMinutes = userLogs.reduce(
-      (sum, log) => sum + log.totalMinutes,
-      0
-    );
+  const calculatedPayroll = (employeeList as User[]).map((emp: User) => {
+    const userLogs = monthWorkLogs.filter((log: any) => log.userId === emp.id);
+    const totalMinutes = userLogs.reduce((sum: number, log: any) => sum + log.totalMinutes, 0);
     const sundayBonusMinutes = userLogs.reduce(
-      (sum, log) =>
+      (sum: number, log: any) =>
         new Date(log.date.replace(/-/g, "/")).getDay() === 0
           ? sum + log.totalMinutes
           : sum,
       0
     );
-
     const hourlyRate = getRateForDate(emp, lastDayOfMonth);
     const baseSalary = (totalMinutes / 60) * hourlyRate;
     const sundayBonus = (sundayBonusMinutes / 60) * hourlyRate; // 100% bónus
     const extra = monthData.extras?.[emp.id] || 0;
     const discount = monthData.discounts?.[emp.id] || 0;
     const netSalary = baseSalary + sundayBonus + extra - discount;
-
     return {
       ...emp,
       baseSalary,
@@ -2397,7 +2475,7 @@ function FinancialsPage({ setPage, data }) {
     };
   });
 
-  const handleAddIncome = (e) => {
+  const handleAddIncome = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (newIncome.amount && newIncome.description) {
       const newEntry = {
@@ -2406,14 +2484,14 @@ function FinancialsPage({ setPage, data }) {
         amount: parseFloat(newIncome.amount),
         date: new Date().toISOString().split("T")[0],
       };
-      setIncomes((prev) => ({
+      setIncomes((prev: any) => ({
         ...prev,
         [currentMonthKey]: [...(prev[currentMonthKey] || []), newEntry],
       }));
       setNewIncome({ description: "", amount: "" });
     }
   };
-  const handleAddMiscExpense = (e) => {
+  const handleAddMiscExpense = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (newMiscExpense.amount && newMiscExpense.description) {
       const newEntry = {
@@ -2422,14 +2500,14 @@ function FinancialsPage({ setPage, data }) {
         amount: parseFloat(newMiscExpense.amount),
         date: new Date().toISOString().split("T")[0],
       };
-      setMiscExpenses((prev) => ({
+      setMiscExpenses((prev: any) => ({
         ...prev,
         [currentMonthKey]: [...(prev[currentMonthKey] || []), newEntry],
       }));
       setNewMiscExpense({ description: "", amount: "" });
     }
   };
-  const handleAddHouseExpense = (e) => {
+  const handleAddHouseExpense = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (
       newHouseExpense.amount &&
@@ -2442,7 +2520,7 @@ function FinancialsPage({ setPage, data }) {
         amount: parseFloat(newHouseExpense.amount),
         date: new Date().toISOString().split("T")[0],
       };
-      setHouseExpenses((prev) => ({
+      setHouseExpenses((prev: any) => ({
         ...prev,
         [currentMonthKey]: [...(prev[currentMonthKey] || []), newEntry],
       }));
@@ -2453,8 +2531,8 @@ function FinancialsPage({ setPage, data }) {
       });
     }
   };
-  const handlePayrollChange = (type, userId, value) => {
-    setPayrollData((prev) => ({
+  const handlePayrollChange = (type: string, userId: string, value: string) => {
+    setPayrollData((prev: any) => ({
       ...prev,
       [currentMonthKey]: {
         ...(prev[currentMonthKey] || { extras: {}, discounts: {} }),
@@ -2466,27 +2544,15 @@ function FinancialsPage({ setPage, data }) {
     }));
   };
 
-  const totalIncome = monthIncomes.reduce((sum, item) => sum + item.amount, 0);
-  const totalNetSalaries = calculatedPayroll.reduce(
-    (sum, emp) => sum + emp.netSalary,
-    0
-  );
-  const totalMiscExpenses = monthMiscExpenses.reduce(
-    (sum, item) => sum + item.amount,
-    0
-  );
-  const fixedRentExpenses = houses.reduce(
-    (sum, house) => sum + (house.rent || 0),
-    0
-  );
-  const variableHouseExpenses = monthHouseExpenses.reduce(
-    (sum, item) => sum + item.amount,
-    0
-  );
+  const totalIncome = monthIncomes.reduce((sum: number, item: any) => sum + item.amount, 0);
+  const totalNetSalaries = calculatedPayroll.reduce((sum: number, emp: any) => sum + emp.netSalary, 0);
+  const totalMiscExpenses = monthMiscExpenses.reduce((sum: number, item: any) => sum + item.amount, 0);
+  const fixedRentExpenses = houses.reduce((sum: number, house: House) => sum + (house.rent || 0), 0);
+  const variableHouseExpenses = monthHouseExpenses.reduce((sum: number, item: any) => sum + item.amount, 0);
   const totalHouseExpenses = fixedRentExpenses + variableHouseExpenses;
   const finalBalance =
     totalIncome - totalNetSalaries - totalHouseExpenses - totalMiscExpenses;
-  const changeMonth = (offset) => {
+  const changeMonth = (offset: number) => {
     setCurrentDate(
       (prevDate) =>
         new Date(prevDate.getFullYear(), prevDate.getMonth() + offset, 15)
@@ -2525,16 +2591,7 @@ function FinancialsPage({ setPage, data }) {
                 <table>
                     <thead><tr><th>Data</th><th>Descrição</th><th>Valor</th></tr></thead>
                     <tbody>
-                        ${monthIncomes
-                          .map(
-                            (item) =>
-                              `<tr><td>${formatDate(item.date)}</td><td>${
-                                item.description
-                              }</td><td class="currency positive">€ ${item.amount.toFixed(
-                                2
-                              )}</td></tr>`
-                          )
-                          .join("")}
+                        ${monthIncomes.map((item: any) => `<tr><td>${formatDate(item.date)}</td><td>${item.description}</td><td class="currency positive">€ ${item.amount.toFixed(2)}</td></tr>`).join("")}
                     </tbody>
                 </table>
             </div>
@@ -2547,35 +2604,14 @@ function FinancialsPage({ setPage, data }) {
                 <table>
                     <thead><tr><th>Data</th><th>Descrição</th><th>Valor</th></tr></thead>
                     <tbody>
-                        ${monthMiscExpenses
-                          .map(
-                            (item) =>
-                              `<tr><td>${formatDate(item.date)}</td><td>${
-                                item.description
-                              }</td><td class="currency negative">€ ${item.amount.toFixed(
-                                2
-                              )}</td></tr>`
-                          )
-                          .join("")}
+                        ${monthMiscExpenses.map((item: any) => `<tr><td>${formatDate(item.date)}</td><td>${item.description}</td><td class="currency negative">€ ${item.amount.toFixed(2)}</td></tr>`).join("")}
                     </tbody>
                 </table>
                 <h3 style="margin-top: 20px;">Casas</h3>
                 <table>
                     <thead><tr><th>Data</th><th>Casa</th><th>Descrição</th><th>Valor</th></tr></thead>
                     <tbody>
-                        ${monthHouseExpenses
-                          .map(
-                            (item) =>
-                              `<tr><td>${formatDate(item.date)}</td><td>${
-                                houses.find((h) => h.id === item.houseId)
-                                  ?.name || ""
-                              }</td><td>${
-                                item.description
-                              }</td><td class="currency negative">€ ${item.amount.toFixed(
-                                2
-                              )}</td></tr>`
-                          )
-                          .join("")}
+                        ${monthHouseExpenses.map((item: any) => `<tr><td>${formatDate(item.date)}</td><td>${houses.find((h: House) => String(h.id) === String(item.houseId))?.name || ""}</td><td>${item.description}</td><td class="currency negative">€ ${item.amount.toFixed(2)}</td></tr>`).join("")}
                         <tr><td>-</td><td><strong>Aluguel Fixo Total</strong></td><td></td><td class="currency negative"><strong>€ ${fixedRentExpenses.toFixed(
                           2
                         )}</strong></td></tr>
@@ -2655,11 +2691,11 @@ function FinancialsPage({ setPage, data }) {
         `;
 
     const printWindow = window.open("", "_blank");
+    if (!printWindow) return;
     printWindow.document.write(reportHtml);
     printWindow.document.close();
     printWindow.focus();
     setTimeout(() => {
-      // Timeout to ensure content is loaded before printing
       printWindow.print();
     }, 500);
   };
@@ -2853,7 +2889,17 @@ function FinancialsPage({ setPage, data }) {
   );
 }
 
-function FinancialCard({ title, value, color, isLarge = false }) {
+function FinancialCard({
+  title,
+  value,
+  color,
+  isLarge = false,
+}: {
+  title: string;
+  value: number;
+  color: string;
+  isLarge?: boolean;
+}) {
   return (
     <div
       className={`bg-[#1a233b]/80 p-6 rounded-xl border border-gray-700 ${
@@ -2880,6 +2926,14 @@ function ExpenseCard({
   setFormState,
   houses,
   isIncome = false,
+}: {
+  title: string;
+  items: any[];
+  onSave: (e: React.FormEvent<HTMLFormElement>) => void;
+  formState: any;
+  setFormState: React.Dispatch<React.SetStateAction<any>>;
+  houses?: House[];
+  isIncome?: boolean;
 }) {
   return (
     <div className="bg-[#1a233b]/80 p-6 rounded-2xl border border-gray-700">
@@ -2889,7 +2943,7 @@ function ExpenseCard({
           <select
             value={formState.houseId}
             onChange={(e) =>
-              setFormState((p) => ({ ...p, houseId: e.target.value }))
+              setFormState((p: any) => ({ ...p, houseId: e.target.value }))
             }
             className="py-2 px-2 bg-[#10182B] rounded-md border-gray-600 flex-grow"
           >
@@ -2906,7 +2960,7 @@ function ExpenseCard({
           placeholder="Descrição"
           value={formState.description}
           onChange={(e) =>
-            setFormState((p) => ({ ...p, description: e.target.value }))
+            setFormState((p: any) => ({ ...p, description: e.target.value }))
           }
           required
           className="py-2 px-2 bg-[#10182B] rounded-md border-gray-600 flex-grow"
@@ -2917,7 +2971,7 @@ function ExpenseCard({
           placeholder="Valor"
           value={formState.amount}
           onChange={(e) =>
-            setFormState((p) => ({ ...p, amount: e.target.value }))
+            setFormState((p: any) => ({ ...p, amount: e.target.value }))
           }
           required
           className="py-2 px-2 bg-[#10182B] rounded-md border-gray-600 w-24"
@@ -2940,7 +2994,7 @@ function ExpenseCard({
               {houses &&
                 item.houseId &&
                 `(${
-                  houses.find((h) => h.id === parseInt(item.houseId))?.name
+                  houses.find((h: House) => String(h.id) === String(item.houseId))?.name
                 })`}
             </span>
             <span
